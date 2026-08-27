@@ -1,4 +1,4 @@
-# Curso de Contenedores - API NestJS
+# Curso de Contenedores - API NestJS.......
 
 Este repositorio contiene el proyecto base que utilizaremos durante el curso.
 La aplicacion esta desarrollada con NestJS y TypeScript, y se ira ampliando
