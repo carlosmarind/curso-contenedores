@@ -26,6 +26,16 @@ export class AppController {
     return this.appService.getHi();
   }
 
+    /**
+   * Endpoint de lectura de variables de ambiente
+   * HTTP: GET /environment
+   * Ejemplo: curl http://localhost:3000/environment
+   */
+  @Get('/environment')
+  getEnvironment(): string {
+    return this.appService.getEnvironment();
+  }
+
   /**
    * Endpoint para prueba de carga de CPU.
    * HTTP: GET /cpu

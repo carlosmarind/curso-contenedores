@@ -21,6 +21,9 @@ export class AppService {
     return 'Hi there!!!';
   }
 
+  getEnvironment(): string {
+    return `Las los valores del ambiente son: ${process.env.AMBIENTE}`;
+  }
   /**
    * Ejecuta una carga intensiva de CPU durante ~10 segundos.
    *
