@@ -1,0 +1,15 @@
+name: wordpress-demo
+services:
+  web:
+    image: wordpress
+  bbdd:
+    image: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_USER: user_wordpress
+      MYSQL_PASSWORD: passw_wordpress
+      MYSQL_DATABASE: wordpress_db
+    volumes:
+      - db_data:/var/lib/mysql
+volumes:
+  db_data:
