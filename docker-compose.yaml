@@ -1,0 +1,21 @@
+name: curso-contendores
+services:
+  db-app:
+    image: postgres:18
+    restart: always
+    environment:
+      POSTGRES_USER:
+      POSTGRES_PASSWORD:
+      POSTGRES_DB:
+    volumes:
+      - db_data:/var/lib/postgresql
+    networks:
+      - app-network
+  backend:
+    networks:
+      - app-network
+volumes:
+  db_data:
+networks:
+  app-network:
+    driver: bridge

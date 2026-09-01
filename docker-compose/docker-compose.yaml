@@ -2,14 +2,61 @@ name: wordpress-demo
 services:
   web:
     image: wordpress
+    restart: unless-stopped
+    depends_on:
+      bbdd:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    secrets:
+      - wordpress_db_password
+    environment:
+      WORDPRESS_DB_HOST: bbdd
+      WORDPRESS_DB_NAME: wordpress_db
+      WORDPRESS_DB_USER: user_wordpress
+      WORDPRESS_DB_PASSWORD_FILE: /run/secrets/wordpress_db_password
+    networks:
+      - wordpress-network
   bbdd:
     image: mysql
+    restart: unless-stopped
+    secrets:
+      - wordpress_db_password
+      - mysql_root_password
     environment:
-      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
       MYSQL_USER: user_wordpress
-      MYSQL_PASSWORD: passw_wordpress
+      MYSQL_PASSWORD_FILE: /run/secrets/wordpress_db_password
       MYSQL_DATABASE: wordpress_db
     volumes:
       - db_data:/var/lib/mysql
+    networks:
+      - wordpress-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: "512M"
+        reservations:
+          cpus: "1.0"
+          memory: "256M"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'mysqladmin ping -h 127.0.0.1 -u root -p"$$(cat /run/secrets/wordpress_db_password)" --silent',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 volumes:
   db_data:
+networks:
+  wordpress-network:
+    driver: bridge
+secrets:
+  wordpress_db_password:
+    file: ./secrets/wordpress_db_password.txt
+  mysql_root_password:
+    file: ./secrets/mysql_root_password.txt
