@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: curso-contenedores
+  labels:
+    app: curso-contenedores
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: curso-contenedores
+  namespace: curso-contenedores
+  labels:
+    app: curso-contenedores
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: curso-contenedores
+  template:
+    metadata:
+      labels:
+        app: curso-contenedores
+    spec:
+      containers:
+        - name: curso-contenedores
+          image: carlosmarind/curso-contenedores:latest
+          imagePullPolicy: Always
+          env:
+            - name: AMBIENTE
+              value: dev
+          ports:
+            - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: curso-contenedores
+  namespace: curso-contenedores
+  labels:
+    app: curso-contenedores
+spec:
+  selector:
+    app: curso-contenedores
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000 
