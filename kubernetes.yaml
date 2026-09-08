@@ -5,6 +5,25 @@ metadata:
   labels:
     app: curso-contenedores
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: curso-contenedores-config
+data:
+  AMBIENTE: develop
+  POSTGRES_USER: pguser-app
+  POSTGRES_DB: cursodb
+  ENABLE_DB: "false"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: curso-contenedores-secret
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: pgpassword-app
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,15 +41,64 @@ spec:
       labels:
         app: curso-contenedores
     spec:
+      imagePullSecrets:
+        - name: regcred-gh
       containers:
         - name: curso-contenedores
-          image: carlosmarind/curso-contenedores:latest
+          image: ghcr.io/carlosmarind/curso-contenedores:latest
           imagePullPolicy: Always
           env:
             - name: AMBIENTE
-              value: dev
+              valueFrom:
+                configMapKeyRef:
+                  name: curso-contenedores-config
+                  key: AMBIENTE
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: curso-contenedores-config
+                  key: POSTGRES_USER
+                  optional: true
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: curso-contenedores-config
+                  key: POSTGRES_DB
+            - name: ENABLE_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: curso-contenedores-config
+                  key: ENABLE_DB
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: curso-contenedores-secret
+                  key: POSTGRES_PASSWORD
           ports:
             - containerPort: 3000
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
 ---
 apiVersion: v1
 kind: Service
@@ -47,3 +115,24 @@ spec:
     - name: http
       port: 80
       targetPort: 3000 
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: curso-contenedores
+  namespace: curso-contenedores
+  labels:
+    app: curso-contenedores
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: app.local
+      http:
+        paths:
+        - pathType: Prefix
+          path: /
+          backend:
+            service:
+              name: curso-contenedores
+              port:
+                number: 80
