@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: curso-contenedores-postgres
+  namespace: curso-contenedores
+  labels:
+    app: curso-contenedores-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: curso-contenedores-postgres
+  template:
+    metadata:
+      labels:
+        app: curso-contenedores-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: curso-contenedores-config
+                  key: DB_USERNAME
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: curso-contenedores-config
+                  key: DB_NAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: curso-contenedores-secret
+                  key: DB_PASSWORD
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
+          resources:
+            requests:
+              # Recursos minimos reservados para que el scheduler ubique el Pod.
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              # Tope maximo de recursos que el contenedor puede consumir.
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            # Vincula el volumen del pod con el pvc que debe estar declarado
+            claimName: curso-contenedores-postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: curso-contenedores-postgres
+  namespace: curso-contenedores
+  labels:
+    app: curso-contendores-postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: curso-contenedores-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: curso-contenedores-postgres-pvc
+  namespace: curso-contenedores
+spec:
+  accessModes:
+    - ReadWriteOnce       # Lectura/escritura desde un unico nodo
+    #- ReadOnlyMany       # solo lectura desde multiples nodos
+    #- ReadWriteMany      # lectura/escritura desde multiples nodos
+    #- ReadWriteOncePod   # lectura escritura desde un unido pod
+  resources:
+    requests:
+      storage: 1G

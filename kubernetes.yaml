@@ -11,9 +11,10 @@ metadata:
   name: curso-contenedores-config
 data:
   AMBIENTE: develop
-  POSTGRES_USER: pguser-app
-  POSTGRES_DB: cursodb
-  ENABLE_DB: "false"
+  DB_HOST: curso-contenedores-postgres
+  DB_USERNAME: pguser-app
+  DB_NAME: cursodb
+  ENABLE_DB: "true"
 
 ---
 apiVersion: v1
@@ -22,7 +23,7 @@ metadata:
   name: curso-contenedores-secret
 type: Opaque
 stringData:
-  POSTGRES_PASSWORD: pgpassword-app
+  DB_PASSWORD: pgpassword-app
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -53,27 +54,32 @@ spec:
                 configMapKeyRef:
                   name: curso-contenedores-config
                   key: AMBIENTE
-            - name: POSTGRES_USER
+            - name: DB_HOST
               valueFrom:
                 configMapKeyRef:
                   name: curso-contenedores-config
-                  key: POSTGRES_USER
+                  key: DB_HOST
+            - name: DB_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: curso-contenedores-config
+                  key: DB_USERNAME
                   optional: true
-            - name: POSTGRES_DB
+            - name: DB_NAME
               valueFrom:
                 configMapKeyRef:
                   name: curso-contenedores-config
-                  key: POSTGRES_DB
+                  key: DB_NAME
             - name: ENABLE_DB
               valueFrom:
                 configMapKeyRef:
                   name: curso-contenedores-config
                   key: ENABLE_DB
-            - name: POSTGRES_PASSWORD
+            - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: curso-contenedores-secret
-                  key: POSTGRES_PASSWORD
+                  key: DB_PASSWORD
           ports:
             - containerPort: 3000
           resources:
@@ -136,3 +142,4 @@ spec:
               name: curso-contenedores
               port:
                 number: 80
+---
