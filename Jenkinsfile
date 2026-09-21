@@ -1,6 +1,8 @@
 pipeline {
     
-    agent any
+    agent {
+        label 'preferido'
+    }
 
     stages{
         stage("Primer paso del pipeline"){
