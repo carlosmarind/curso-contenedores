@@ -1,6 +1,21 @@
 pipeline {
     
-    agent any
+    //agent any
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+    containers:
+      - name: herramientas
+        image: alpine:3.23
+        command:
+          - cat
+        tty: true
+            '''
+        }
+    }
     stages{
         stage("Primer paso del pipeline"){
             steps{
