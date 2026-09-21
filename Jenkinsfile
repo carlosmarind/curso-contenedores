@@ -20,5 +20,10 @@ pipeline {
                  sh 'echo "Tercer saludo desde el terminal"'
             }
         }
+        stage("Cuarto paso del pipeline"){
+            steps{
+                 sh 'docker ps'
+            }
+        }
     }
 }
