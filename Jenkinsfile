@@ -25,5 +25,16 @@ pipeline {
                  sh 'docker ps'
             }
         }
+        stage("Quinto paso del pipeline"){
+            agent {
+                docker {
+                    label 'wsl2'
+                    image 'node:26'
+                }
+            }
+            steps{
+                 sh 'node -v'
+            }
+        }
     }
 }
