@@ -1,7 +1,7 @@
 pipeline {
     
     agent {
-        label 'preferido'
+        label 'wsl2'
     }
 
     stages{
