@@ -13,6 +13,11 @@ spec:
         command:
           - cat
         tty: true
+      - name: node-tool
+        image: node:26
+        command:
+          - cat
+        tty: true
             '''
         }
     }
@@ -49,6 +54,13 @@ spec:
             }
             steps{
                  sh 'node -v'
+            }
+        }
+        stage("Sexto paso del pipeline"){
+            steps{
+                container("node-tool"){
+                    sh 'node -v'
+                }
             }
         }
     }
