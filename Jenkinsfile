@@ -1,9 +1,6 @@
 pipeline {
     
-    agent {
-        label 'wsl2'
-    }
-
+    agent any
     stages{
         stage("Primer paso del pipeline"){
             steps{
@@ -21,6 +18,9 @@ pipeline {
             }
         }
         stage("Cuarto paso del pipeline"){
+            agent {
+                label 'wsl2'
+            }
             steps{
                  sh 'docker ps'
             }
