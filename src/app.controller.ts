@@ -26,7 +26,7 @@ export class AppController {
     return this.appService.getHi();
   }
 
-    /**
+  /**
    * Endpoint de lectura de variables de ambiente
    * HTTP: GET /environment
    * Ejemplo: curl http://localhost:3000/environment
