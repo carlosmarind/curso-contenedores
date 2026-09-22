@@ -7,13 +7,34 @@ spec:
         command:
           - cat
         tty: true
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "1000m"
+            memory: "512Mi"
       - name: node-tool
         image: node:26
         command:
           - cat
         tty: true
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "1000m"
+            memory: "512Mi"
       - name: kubectl-tool
         image: alpine/k8s:1.36.1
         command:
           - cat
         tty: true
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "1000m"
+            memory: "512Mi"
