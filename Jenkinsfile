@@ -2,6 +2,7 @@ pipeline {
     //agent any
     agent {
         kubernetes {
+            defaultContainer 'herramientas'
             yamlFile 'agent-node.yaml'
         }
     }
@@ -9,41 +10,22 @@ pipeline {
         stage("Primer paso del pipeline"){
             steps{
                 sh 'echo "saludos desde el terminal"'
+                sh 'uname -a'
+                sh 'cat /proc/version'
             }
         }
-         stage("Segundo paso del pipeline"){
+        stage("Segundo paso del pipeline"){
             steps{
-                sh 'echo "segundos saludos desde el terminal"'
+                container("node-tool"){
+                    sh 'node --version'
+                    sh 'npm --version'
+                }
             }
         }
         stage("Tercer paso del pipeline"){
             steps{
-                 sh 'echo "Tercer saludo desde el terminal"'
-            }
-        }
-        stage("Cuarto paso del pipeline"){
-            agent {
-                label 'wsl2'
-            }
-            steps{
-                 sh 'docker ps'
-            }
-        }
-        stage("Quinto paso del pipeline"){
-            agent {
-                docker {
-                    label 'wsl2'
-                    image 'node:26'
-                }
-            }
-            steps{
-                 sh 'node -v'
-            }
-        }
-        stage("Sexto paso del pipeline"){
-            steps{
-                container("node-tool"){
-                    sh 'node -v'
+                container('kubectl-tool'){
+                    sh 'kubectl version --client'
                 }
             }
         }
