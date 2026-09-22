@@ -13,7 +13,7 @@ spec:
           - cat
         tty: true
       - name: kubectl-tool
-        image: alpine/k8s:v1.36.1
+        image: alpine/k8s:1.36.1
         command:
           - cat
         tty: true
