@@ -1,24 +1,8 @@
 pipeline {
-    
     //agent any
     agent {
         kubernetes {
-            yaml '''
-apiVersion: v1
-kind: Pod
-spec:
-    containers:
-      - name: herramientas
-        image: alpine:3.23
-        command:
-          - cat
-        tty: true
-      - name: node-tool
-        image: node:26
-        command:
-          - cat
-        tty: true
-            '''
+            yamlFile 'agent-node.yaml'
         }
     }
     stages{
