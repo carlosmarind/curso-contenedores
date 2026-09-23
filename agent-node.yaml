@@ -15,7 +15,7 @@ spec:
             cpu: "1000m"
             memory: "512Mi"
       - name: node-tool
-        image: node:26
+        image: node:24
         command:
           - cat
         tty: true

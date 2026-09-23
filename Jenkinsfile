@@ -2,31 +2,24 @@ pipeline {
     //agent any
     agent {
         kubernetes {
-            defaultContainer 'herramientas'
+            defaultContainer 'node-tool'
             yamlFile 'agent-node.yaml'
         }
     }
     stages{
-        stage("Primer paso del pipeline"){
+        stage("CI - Instalacion de dependencias"){
             steps{
-                sh 'echo "saludos desde el terminal"'
-                sh 'uname -a'
-                sh 'cat /proc/version'
+                sh 'pnpm install --frozen-lockfile'
             }
         }
-        stage("Segundo paso del pipeline"){
+        stage("CI - revision de linter"){
             steps{
-                container("node-tool"){
-                    sh 'node --version'
-                    sh 'npm --version'
-                }
+                sh 'pnpm lint'
             }
         }
         stage("Tercer paso del pipeline"){
             steps{
-                container('kubectl-tool'){
-                    sh 'kubectl version --client'
-                }
+                 sh 'pnpm test'
             }
         }
     }
