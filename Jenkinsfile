@@ -7,6 +7,13 @@ pipeline {
         }
     }
     stages{
+        stage("CI - Activacion de pnpm"){
+            steps{
+                sh 'corepack enable'
+                sh 'node --version'
+                sh 'pnpm --version'
+            }
+        }
         stage("CI - Instalacion de dependencias"){
             steps{
                 sh 'pnpm install --frozen-lockfile'
