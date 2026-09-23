@@ -19,14 +19,19 @@ pipeline {
                 sh 'pnpm install --frozen-lockfile'
             }
         }
-        stage("CI - revision de linter"){
+        stage("CI - Revision de Linter"){
             steps{
                 sh 'pnpm lint'
             }
         }
-        stage("Tercer paso del pipeline"){
+        stage("CI - Ejecucion de Test"){
             steps{
                  sh 'pnpm test'
+            }
+        }
+        stage("CI - Construccion de aplicacion"){
+            steps{
+                 sh 'pnpm build'
             }
         }
     }
