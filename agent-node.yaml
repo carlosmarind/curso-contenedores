@@ -38,3 +38,15 @@ spec:
           limits:
             cpu: "1000m"
             memory: "512Mi"
+      - name: buildkit
+        image: moby/buildkit:rootless
+        command:
+          - cat
+        tty: true
+        resources:
+          requests:
+            cpu: "1000m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"

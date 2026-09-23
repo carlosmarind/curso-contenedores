@@ -34,5 +34,18 @@ pipeline {
                  sh 'pnpm build'
             }
         }
+        stage("CD - Construccion imagen y upload"){
+            steps{
+                container('buildkit'){
+                    sh '''
+                        buildctl-daemonless.sh build \
+                        --frontend dockerfile.v0 \
+                        --local context=. \
+                        --local dockerfile=. \
+                        --output type=image,"name=carlosmarind/curso-contenedores:latest,carlosmarind/curso-contenedores:${env.BUILD_NUMBER}",push=true
+                    '''
+                }
+            }
+        }
     }
 }
