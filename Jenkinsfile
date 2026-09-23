@@ -42,7 +42,7 @@ pipeline {
                         --frontend dockerfile.v0 \
                         --local context=. \
                         --local dockerfile=. \
-                        --output type=image,\\\"name=carlosmarind/curso-contenedores:latest,carlosmarind/curso-contenedores:${env.BUILD_NUMBER}\\\",push=true
+                        --output type=image,\\\"name=carlosmarind/curso-contenedores:latest,carlosmarind/curso-contenedores:${BUILD_NUMBER}\\\",push=true
                     '''
                 }
             }
