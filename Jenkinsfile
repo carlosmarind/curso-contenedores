@@ -38,7 +38,6 @@ pipeline {
             steps{
                 container('buildkit'){
                     sh '''
-
                         export DOCKER_CONFIG=/docker-config/dockerhub
                         test -s ${DOCKER_CONFIG}/config.json
 
@@ -56,7 +55,16 @@ pipeline {
                         --local context=. \
                         --local dockerfile=. \
                         --output type=image,\\\"name=ghcr.io/carlosmarind/curso-contenedores:latest,ghcr.io/carlosmarind/curso-contenedores:${BUILD_NUMBER}\\\",push=true
-
+                    '''
+                }
+            }
+        }
+        stage('CD - Despliegue continuo'){
+            steps{
+                container('kubectl-tool'){
+                    sh '''
+                       kubectl -n curso-contenedores set image deployment/curso-contenedores curso-contenedores=ghcr.io/carlosmarind/curso-contenedores:${BUILD_NUMBER}
+                       kubectl -n curso-contenedores rollout status deployment/curso-contenedores
                     '''
                 }
             }
