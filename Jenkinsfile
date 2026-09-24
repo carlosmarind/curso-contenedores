@@ -38,6 +38,10 @@ pipeline {
             steps{
                 container('buildkit'){
                     sh '''
+
+                        export DOCKER_CONFIG=/docker-config/dockerhub
+                        test -s ${DOCKER_CONFIG}/config.json
+
                         buildctl-daemonless.sh build \
                         --frontend dockerfile.v0 \
                         --local context=. \

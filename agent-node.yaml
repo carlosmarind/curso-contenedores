@@ -43,6 +43,13 @@ spec:
         command:
           - cat
         tty: true
+        volumeMounts:
+          - name: regcred-dh
+            mountPath: /docker-config/dockerhub
+            readOnly: true
+          - name: regcred-gh
+            mountPath: /docker-config/github
+            readOnly: true
         resources:
           requests:
             cpu: "1000m"
@@ -50,3 +57,16 @@ spec:
           limits:
             cpu: "1000m"
             memory: "2Gi"
+    volumes:
+      - name: regcred-dh
+        secret:
+          secretName: regcred-dh
+          items:
+            - key: .dockerconfigjson
+              path: config.json
+      - name: regcred-gh
+        secret:
+          secretName: regcred-gh
+          items:
+            - key: .dockerconfigjson
+              path: config.json
