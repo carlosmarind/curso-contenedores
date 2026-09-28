@@ -6,6 +6,11 @@ pipeline {
             yamlFile 'agent-node.yaml'
         }
     }
+    environment{
+        DH_REPO = 'carlosmarind/curso-contendores'
+        GH_REPO = 'ghcr.io/carlosmarind/curso-contendores'
+        K8S_NAMESPACE = 'curso-contenedores'
+    }
     stages{
         stage("CI - Activacion de pnpm"){
             steps{
@@ -45,7 +50,7 @@ pipeline {
                         --frontend dockerfile.v0 \
                         --local context=. \
                         --local dockerfile=. \
-                        --output type=image,\\\"name=carlosmarind/curso-contenedores:latest,carlosmarind/curso-contenedores:${BUILD_NUMBER}\\\",push=true
+                        --output type=image,\\\"name=${DH_REPO}:latest,${DH_REPO}:${BUILD_NUMBER}\\\",push=true
 
                         export DOCKER_CONFIG=/docker-config/github
                         test -s ${DOCKER_CONFIG}/config.json
@@ -54,18 +59,24 @@ pipeline {
                         --frontend dockerfile.v0 \
                         --local context=. \
                         --local dockerfile=. \
-                        --output type=image,\\\"name=ghcr.io/carlosmarind/curso-contenedores:latest,ghcr.io/carlosmarind/curso-contenedores:${BUILD_NUMBER}\\\",push=true
+                        --output type=image,\\\"name=${GH_REPO}:latest,${GH_REPO}:${BUILD_NUMBER}\\\",push=true
                     '''
                 }
             }
         }
         stage('CD - Despliegue continuo'){
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'test'
+                }
+            }
             steps{
                 container('kubectl-tool'){
                     withKubeConfig([credentialsId: 'kubernetes-config']){
                         sh '''
-                           kubectl -n curso-contenedores set image deployment/curso-contenedores curso-contenedores=ghcr.io/carlosmarind/curso-contenedores:${BUILD_NUMBER}
-                           kubectl -n curso-contenedores rollout status deployment/curso-contenedores
+                           kubectl -n ${K8S_NAMESPACE} set image deployment/curso-contenedores curso-contenedores=${GH_REPO}:${BUILD_NUMBER}
+                           kubectl -n ${K8S_NAMESPACE} rollout status deployment/curso-contenedores
                         '''
                     }
                 }
