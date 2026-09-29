@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cmd-token
+  namespace: curso-contenedores
+  annotations:
+    kubernetes.io/service-account.name: cmd-sa
+type: kubernetes.io/service-account-token
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer-role
+  namespace: curso-contenedores
+  labels:
+    app: curso-contenedores
+  annotations:
+    description: "Este es un rol de ejemplo para un perfil de desarrollador"
+rules:
+- apiGroups: [""] # vacio representa pods, services, configmaps y secrets
+  resources: ["pods","configmaps","secrets"]
+  verbs: ["get","delete","list"]
+- apiGroups: ["apps"] # vacio representa pods, services, configmaps y secrets
+  resources: ["deployments"]
+  verbs: ["get","list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer-role-binding
+  namespace: curso-contenedores
+  labels:
+    app: curso-contenedores
+  annotations:
+    description: "Este es un rol binding de ejemplo para unir perfil service account cmd-sa al role developer-role"
+subjects:
+- kind: ServiceAccount 
+  name: cmd-sa
+  namespace: curso-contenedores
+roleRef:
+  kind: Role # podria ser tambien ClusterRole
+  name: developer-role
+  apiGroup: rbac.authorization.k8s.io
+
