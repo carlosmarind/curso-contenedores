@@ -1,45 +1,221 @@
-apiVersion: v1
-kind: Secret
+# ==============================================================================
+# ServiceAccount y RBAC de ejemplo para el curso
+# ==============================================================================
+# Este archivo crea seis objetos, separados por `---`:
+#   1. ServiceAccount: identidad que usará Kubernetes.
+#   2. Secret: token de larga duración asociado al ServiceAccount.
+#   3. Role: permisos limitados al namespace curso-contenedores.
+#   4. RoleBinding: asigna el Role al ServiceAccount.
+#   5. ClusterRole: permisos que pueden abarcar todo el clúster.
+#   6. ClusterRoleBinding: asigna el ClusterRole al ServiceAccount.
+#
+# RBAC es aditivo: permite acciones, pero no tiene reglas "deny". Si un sujeto
+# recibe el mismo permiso por otro Role o ClusterRole, ese permiso también aplica.
+#
+# ----------------------------------------------------------------------------
+# Comandos útiles para explorar la API
+# ----------------------------------------------------------------------------
+# Mostrar todos los recursos, sus nombres cortos, API groups, verbos y alcance:
+#   kubectl api-resources -o wide
+# Mostrar solo recursos que pertenecen a un namespace:
+#   kubectl api-resources --namespaced=true -o wide
+# Mostrar recursos globales del clúster, por ejemplo nodes y namespaces:
+#   kubectl api-resources --namespaced=false -o wide
+# Consultar campos y documentación incorporada en kubectl:
+#   kubectl explain serviceaccount
+#   kubectl explain role.rules
+#   kubectl explain clusterrolebinding.subjects
+#
+# ----------------------------------------------------------------------------
+# Comandos para validar, comparar y aplicar este archivo
+# ----------------------------------------------------------------------------
+# Verificar sintaxis y construcción local sin contactar ni modificar el clúster:
+#   kubectl create --dry-run=client -f accounts.yaml -o name
+# Pedir al API server que valide sin guardar cambios; requiere permisos RBAC:
+#   kubectl apply --dry-run=server -f accounts.yaml
+# Comparar el archivo con el estado actual. Exit code 1 significa diferencias:
+#   kubectl diff -f accounts.yaml
+# Crear o actualizar los recursos:
+#   kubectl apply -f accounts.yaml
+#
+# ----------------------------------------------------------------------------
+# Comandos para inspeccionar los recursos
+# ----------------------------------------------------------------------------
+# Confirmar que el namespace existe antes de aplicar:
+#   kubectl get namespace curso-contenedores
+# Ver los recursos limitados al namespace:
+#   kubectl get serviceaccount,secret,role,rolebinding -n curso-contenedores
+# Ver los recursos globales creados por este archivo:
+#   kubectl get clusterrole/developer-cluster-role \
+#     clusterrolebinding/developer-cluster-role-binding
+# Mostrar las reglas resueltas de cada rol:
+#   kubectl describe role developer-role -n curso-contenedores
+#   kubectl describe clusterrole developer-cluster-role
+#
+# ----------------------------------------------------------------------------
+# Tokens del ServiceAccount
+# ----------------------------------------------------------------------------
+# Forma recomendada: solicitar un token temporal de una hora.
+# ATENCIÓN: el comando imprime una credencial; no compartirla ni subirla a Git:
+#   kubectl create token cmd-sa -n curso-contenedores --duration=1h
+# El Secret cmd-token de este ejemplo genera un token de larga duración. Se
+# conserva con fines educativos, pero no se recomienda para uso habitual.
+#
+# ----------------------------------------------------------------------------
+# Comandos para comprobar permisos
+# ----------------------------------------------------------------------------
+# Listar permisos efectivos del ServiceAccount dentro del namespace:
+#   kubectl auth can-i --list \
+#     --as=system:serviceaccount:curso-contenedores:cmd-sa \
+#     -n curso-contenedores
+# Comprobar una acción concreta limitada al namespace:
+#   kubectl auth can-i list pods \
+#     --as=system:serviceaccount:curso-contenedores:cmd-sa \
+#     -n curso-contenedores
+# Comprobar una acción global concedida por el ClusterRole:
+#   kubectl auth can-i list nodes \
+#     --as=system:serviceaccount:curso-contenedores:cmd-sa
+#
+# El uso de --as requiere que el usuario actual pueda impersonar al sujeto.
+#
+# ----------------------------------------------------------------------------
+# Limpieza del laboratorio
+# ----------------------------------------------------------------------------
+# CUIDADO: elimina todos los recursos definidos en este archivo:
+#   kubectl delete -f accounts.yaml
+
+# ==============================================================================
+# 1. ServiceAccount
+# ==============================================================================
+apiVersion: v1 # ServiceAccount pertenece al API group principal (core).
+kind: ServiceAccount # Identidad para Pods, procesos o clientes de la API.
 metadata:
-  name: cmd-token
-  namespace: curso-contenedores
+  name: cmd-sa # Nombre usado luego en subjects y en kubectl create token.
+  namespace: curso-contenedores # Los ServiceAccounts pertenecen a un namespace.
+  labels: # Metadatos opcionales para organizar y seleccionar objetos.
+    app: curso-contenedores
+  annotations: # Metadatos opcionales no usados como selectores.
+    description: "ServiceAccount de ejemplo para practicar RBAC"
+# Opción de seguridad: evita el montaje automático del token en los Pods que
+# usen esta cuenta. Puede habilitarse quitando el comentario siguiente:
+# automountServiceAccountToken: false
+
+---
+# ==============================================================================
+# 2. Secret con token de larga duración
+# ==============================================================================
+apiVersion: v1 # Secret también pertenece al API group principal.
+kind: Secret # Almacena información sensible administrada por Kubernetes.
+metadata:
+  name: cmd-token # Nombre del Secret; debe ser único dentro del namespace.
+  namespace: curso-contenedores # Debe coincidir con el namespace de cmd-sa.
   annotations:
+    # Esta anotación solicita al controlador un token para cmd-sa.
+    # No se escribe el token manualmente en este YAML.
     kubernetes.io/service-account.name: cmd-sa
+# Este tipo especial hace que Kubernetes complete token, ca.crt y namespace.
 type: kubernetes.io/service-account-token
 
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+# ==============================================================================
+# 3. Role: permisos dentro de curso-contenedores
+# ==============================================================================
+apiVersion: rbac.authorization.k8s.io/v1 # Versión estable de la API RBAC.
+kind: Role # Un Role siempre está limitado a un namespace.
 metadata:
-  name: developer-role
-  namespace: curso-contenedores
+  name: developer-role # Nombre referenciado posteriormente por el RoleBinding.
+  namespace: curso-contenedores # Namespace donde se permiten las acciones.
   labels:
     app: curso-contenedores
   annotations:
-    description: "Este es un rol de ejemplo para un perfil de desarrollador"
-rules:
-- apiGroups: [""] # vacio representa pods, services, configmaps y secrets
-  resources: ["pods","configmaps","secrets"]
-  verbs: ["get","delete","list"]
-- apiGroups: ["apps"] # vacio representa pods, services, configmaps y secrets
-  resources: ["deployments"]
-  verbs: ["get","list"]
+    description: "Role de ejemplo para un perfil de desarrollador"
+rules: # Lista de reglas; los permisos de todas ellas se suman.
+  # El API group vacío representa recursos core: pods, services, secrets, etc.
+  - apiGroups: [""]
+    # Los mismos verbos de esta regla aplican a los tres recursos siguientes.
+    resources: ["pods", "configmaps", "secrets"]
+    # Leer Secrets puede exponer credenciales y delete puede eliminarlas. En un
+    # entorno real conviene separarlos en otra regla y otorgar el mínimo acceso.
+    # Verbos frecuentes: get, list, watch, create, update, patch, delete y
+    # deletecollection. El comodín "*" permite todos y debe usarse con cuidado.
+    verbs: ["get", "delete", "list"]
+    # resourceNames es opcional y restringe por nombre. No sirve para limitar
+    # create; list y watch requieren --field-selector=metadata.name=<nombre>.
+    # resourceNames: ["mi-pod"]
+  # Deployments pertenece al API group apps, no al API group core.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    # Esta regla solo permite consultar Deployments; no crearlos ni modificarlos.
+    verbs: ["get", "list"]
+
 ---
+# ==============================================================================
+# 4. RoleBinding: asigna developer-role a cmd-sa
+# ==============================================================================
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: RoleBinding # Concede permisos dentro de un namespace.
 metadata:
   name: developer-role-binding
-  namespace: curso-contenedores
+  namespace: curso-contenedores # Define dónde se conceden los permisos.
   labels:
     app: curso-contenedores
   annotations:
-    description: "Este es un rol binding de ejemplo para unir perfil service account cmd-sa al role developer-role"
-subjects:
-- kind: ServiceAccount 
-  name: cmd-sa
-  namespace: curso-contenedores
-roleRef:
-  kind: Role # podria ser tambien ClusterRole
-  name: developer-role
-  apiGroup: rbac.authorization.k8s.io
+    description: "Asigna developer-role al ServiceAccount cmd-sa"
+subjects: # Uno o más usuarios, grupos o ServiceAccounts reciben los permisos.
+  - kind: ServiceAccount # Otras opciones son User y Group.
+    name: cmd-sa
+    namespace: curso-contenedores # Obligatorio para un ServiceAccount.
+    # ServiceAccount pertenece al API group core, por eso no lleva apiGroup.
+    # User y Group sí usan: apiGroup: rbac.authorization.k8s.io
+roleRef: # Referencia al rol que se concede; no contiene reglas directamente.
+  kind: Role # También puede ser ClusterRole, limitado por este RoleBinding.
+  name: developer-role # Debe coincidir con metadata.name del Role anterior.
+  apiGroup: rbac.authorization.k8s.io # API group obligatorio para RBAC.
+# roleRef es inmutable: para cambiarlo se elimina y recrea el RoleBinding.
 
+---
+# ==============================================================================
+# 5. ClusterRole: permisos globales de solo lectura
+# ==============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole # No pertenece a un namespace y no usa metadata.namespace.
+metadata:
+  name: developer-cluster-role
+  labels:
+    app: curso-contenedores
+  annotations:
+    description: "Lectura de recursos globales para el ServiceAccount cmd-sa"
+rules:
+  # Nodes y namespaces son recursos core y globales, no namespaced.
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces"]
+    # Permisos de consulta sin create, update, patch ni delete.
+    verbs: ["get", "list", "watch"]
+# Un ClusterRole también puede contener recursos namespaced, como pods. Con un
+# ClusterRoleBinding esos permisos aplicarían en todos los namespaces.
+# También acepta apiGroups/resources/verbs: ["*"], pero eso concede permisos muy
+# amplios y no se usa en este ejemplo.
+
+---
+# ==============================================================================
+# 6. ClusterRoleBinding: asigna developer-cluster-role a cmd-sa
+# ==============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding # Concede permisos con alcance de todo el clúster.
+metadata:
+  name: developer-cluster-role-binding
+  # ClusterRoleBinding es global y no acepta metadata.namespace.
+  labels:
+    app: curso-contenedores
+  annotations:
+    description: "Asigna developer-cluster-role al ServiceAccount cmd-sa"
+subjects:
+  - kind: ServiceAccount
+    name: cmd-sa
+    # Aunque el binding sea global, el ServiceAccount sí pertenece a un namespace.
+    namespace: curso-contenedores
+    # No se agrega apiGroup porque ServiceAccount pertenece al API group core.
+roleRef:
+  kind: ClusterRole # ClusterRoleBinding solo puede referenciar un ClusterRole.
+  name: developer-cluster-role
+  apiGroup: rbac.authorization.k8s.io
