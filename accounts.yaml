@@ -58,8 +58,7 @@
 # Forma recomendada: solicitar un token temporal de una hora.
 # ATENCIÓN: el comando imprime una credencial; no compartirla ni subirla a Git:
 #   kubectl create token cmd-sa -n curso-contenedores --duration=1h
-# El Secret cmd-token de este ejemplo genera un token de larga duración. Se
-# conserva con fines educativos, pero no se recomienda para uso habitual.
+# El Secret cmd-token de este ejemplo genera un token de larga duración. 
 #
 # ----------------------------------------------------------------------------
 # Comandos para comprobar permisos
