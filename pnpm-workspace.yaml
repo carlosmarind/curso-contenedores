@@ -1,3 +1,4 @@
 allowBuilds:
   '@nestjs/core': true
+  '@parcel/watcher': true
   unrs-resolver: true
