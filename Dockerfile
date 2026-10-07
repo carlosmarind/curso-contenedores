@@ -1,7 +1,7 @@
 # esta es la imagen que tomo como base para partir a construir la mia, podria ser cualquiera
 # pero me conviene una con node, ya que mi aplicacion necesita node
 # para instalar las dependencias, construirla y ejecutarla
-FROM node:24 AS construccion
+FROM node:24.21.0-bookworm-slim AS construccion
 
 # Directorio de trabajo donde me paro a ejecutar comandos
 WORKDIR /usr/app
@@ -22,7 +22,7 @@ COPY src ./src
 RUN pnpm build
 
 
-FROM node:24 AS dependencias-produccion
+FROM node:24.21.0-bookworm-slim AS dependencias-produccion
 
 WORKDIR /usr/app
 
@@ -35,13 +35,15 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --prod --frozen-lockfile
 
 
-FROM node:24-alpine AS runner
+FROM node:24.21.0-bookworm-slim AS runner
 
 WORKDIR /usr/app
 
 COPY --from=construccion /usr/app/package.json ./
 COPY --from=construccion /usr/app/dist ./dist
 COPY --from=dependencias-produccion /usr/app/node_modules ./node_modules
+
+USER node
 
 # le digo a la imagen cual es el comando que debe ejecutar
 # al iniciar el contenedor.

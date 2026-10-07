@@ -6,10 +6,14 @@ clase a clase a medida que incorporemos nuevos conceptos.
 
 ## Requisitos
 
-- Node.js 24
+- Node.js 24 LTS, version 24.15.0 o superior dentro de la rama 24
 - pnpm 11
 
 El proyecto declara `pnpm@11.1.2` como gestor de paquetes.
+Utiliza NestJS 12, TypeScript 6 y TypeORM 1. Las imagenes Docker y los agentes
+Node de Jenkins usan `node:24.21.0-bookworm-slim`.
+Los scripts de pruebas habilitan los modulos VM de Node para cargar los
+paquetes ESM de NestJS 12 con Jest.
 
 ## Instalacion
 
@@ -17,7 +21,7 @@ Habilita pnpm e instala las dependencias:
 
 ```bash
 corepack enable
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
 ## Ejecutar la aplicacion

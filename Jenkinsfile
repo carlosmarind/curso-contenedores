@@ -7,8 +7,8 @@ pipeline {
         }
     }
     environment{
-        DH_REPO = 'carlosmarind/curso-contendores'
-        GH_REPO = 'ghcr.io/carlosmarind/curso-contendores'
+        DH_REPO = 'carlosmarind/curso-contenedores'
+        GH_REPO = 'ghcr.io/carlosmarind/curso-contenedores'
         K8S_NAMESPACE = 'curso-contenedores'
     }
     stages{
@@ -31,7 +31,7 @@ pipeline {
         }
         stage("CI - Ejecucion de Test"){
             steps{
-                 sh 'pnpm test'
+                 sh 'pnpm test --runInBand'
             }
         }
         stage("CI - Construccion de aplicacion"){

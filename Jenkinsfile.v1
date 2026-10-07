@@ -14,7 +14,7 @@ spec:
           - cat
         tty: true
       - name: node-tool
-        image: node:26
+        image: node:24.21.0-bookworm-slim
         command:
           - cat
         tty: true
@@ -49,7 +49,7 @@ spec:
             agent {
                 docker {
                     label 'wsl2'
-                    image 'node:26'
+                    image 'node:24.21.0-bookworm-slim'
                 }
             }
             steps{

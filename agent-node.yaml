@@ -15,7 +15,7 @@ spec:
             cpu: "1000m"
             memory: "512Mi"
       - name: node-tool
-        image: node:24
+        image: node:24.21.0-bookworm-slim
         command:
           - cat
         tty: true
