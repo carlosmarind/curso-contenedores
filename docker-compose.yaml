@@ -1,54 +1,150 @@
+# ==============================================================================
+# Docker Compose: PostgreSQL y API NestJS en el equipo de trabajo
+# ==============================================================================
+# Define dos servicios, una red compartida y un volumen persistente.
+# backend accede a PostgreSQL por db-app:5432 dentro de app-network.
+# El equipo cliente accede a NestJS por http://localhost:3000.
+#
+# ${VARIABLE} se sustituye con el entorno del shell o el archivo .env de Compose.
+# ${VARIABLE:-valor} usa el valor indicado si la variable no existe o esta vacia.
+# Leer .env para sustituir variables NO inyecta todo el archivo en los contenedores:
+# solo se entregan las variables declaradas en environment.
+#
+# Comandos utiles desde esta carpeta:
+# docker compose config --quiet         # Valida sin mostrar valores sensibles.
+# docker compose up -d --build          # Construye e inicia los servicios.
+# docker compose ps                    # Muestra estado y salud.
+# docker compose logs -f backend        # Sigue los logs de NestJS.
+# docker compose logs -f db-app         # Sigue los logs de PostgreSQL.
+# docker compose down                  # Elimina contenedores y red, conserva datos.
+# docker compose down -v               # TAMBIEN elimina el volumen y sus datos.
+#
+# Documentacion: https://docs.docker.com/reference/compose-file/
+
+# Nombre del proyecto; se usa como prefijo de los recursos creados por Compose.
 name: curso-contenedores
+# Servicios que Compose administrara, cada uno con su propio contenedor.
 services:
+  # ==============================================================================
+  # 1. PostgreSQL
+  # ==============================================================================
+  # Nombre del servicio y nombre DNS disponible dentro de app-network.
   db-app:
+    # Version principal 18; no se construye una imagen propia para PostgreSQL.
     image: postgres:18
+    # Reinicia si termina. Una parada manual permite mantenerlo detenido.
     restart: always
+    # Variables entregadas al contenedor. La imagen PostgreSQL las usa al inicializar
+    # un directorio de datos vacio; cambiarlas no migra usuarios ni datos existentes.
     environment:
+      # Usuario que se crea durante la inicializacion de PostgreSQL.
       POSTGRES_USER: ${POSTGRES_USER}
+      # Contrasena de ese usuario; mantener el .env fuera del repositorio.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Base de datos que se crea inicialmente.
       POSTGRES_DB: ${POSTGRES_DB}
+    # Montajes de almacenamiento del contenedor.
     volumes:
+      # volumen:destino. PostgreSQL 18 almacena sus datos bajo /var/lib/postgresql;
+      # el volumen conserva esos datos aunque se elimine y recree el contenedor.
       - db_data:/var/lib/postgresql
+    # Comprobacion que determina si el contenedor esta healthy o unhealthy.
     healthcheck:
+      # CMD-SHELL ejecuta el comando mediante un shell. pg_isready comprueba si
+      # PostgreSQL acepta conexiones; no prueba el CRUD ni valida el esquema de la API.
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      # Intervalo de 10 segundos entre comprobaciones.
       interval: 10s
+      # Tiempo maximo de 5 segundos para cada comprobacion.
       timeout: 5s
+      # 10 fallos consecutivos hacen que el contenedor se marque como unhealthy.
+      # El healthcheck por si solo no reinicia el contenedor.
       retries: 10
+      # Durante estos 20 segundos iniciales, los fallos no cuentan para retries.
+      # No obliga a esperar los 20 segundos si la comprobacion ya tiene exito.
       start_period: 20s
+    # Opciones de despliegue; su soporte depende de la plataforma de ejecucion.
     deploy:
+      # Limites y reservas de recursos para el servicio de base de datos.
       resources:
+        # Topes de consumo, tambien admitidos por Docker Compose local.
         limits:
+          # Hasta 6 CPU de capacidad; no crea CPU adicionales en el equipo.
           cpus: "6"
+          # Limite de memoria del contenedor PostgreSQL.
           memory: "512M"
-        # Los reservation solo aplican para swarm, pero so validos aca
+        # Las reservas y los limites cumplen funciones distintas; ver la nota siguiente.
+        # Recursos solicitados al planificador de despliegue, por ejemplo en Swarm.
+        # No asumir que docker compose local reserva fisicamente CPU y memoria: la
+        # reserva de CPU depende del planificador; la de memoria puede ser un limite blando.
         reservations:
+          # Reserva declarada de 2 CPU para la planificacion de un despliegue.
           cpus: "2"
+          # Reserva declarada de memoria, distinta del limite maximo anterior.
           memory: "256M"
+    # Redes a las que se conectara este servicio.
     networks:
+      # Comparte la red con backend para permitir la conexion por nombre de servicio.
       - app-network
+  # ==============================================================================
+  # 2. API NestJS
+  # ==============================================================================
+  # Nombre del servicio de la aplicacion.
   backend:
+    # Nombre que se asigna a la imagen construida; al no indicar etiqueta, usa latest.
     image: curso-contenedores
+    # Define como construir la imagen de la aplicacion.
     build:
+      # El directorio actual es el contexto; .dockerignore excluye archivos del envio.
       context: .
+      # Archivo de instrucciones de construccion, relativo al contexto.
       dockerfile: Dockerfile
+    # Reinicia si el proceso termina; no corrige errores de configuracion.
     restart: always
+    # Dependencias que se consideran al iniciar los servicios.
     depends_on:
+      # La API depende del servicio de base de datos db-app.
       db-app:
+        # Espera a que PostgreSQL este healthy antes de iniciar backend. No supervisa
+        # continuamente la dependencia ni detiene backend si despues PostgreSQL falla.
+        # La dependencia se mantiene aunque ENABLE_DB se configure como false.
         condition: service_healthy
+    # Variables que recibe NestJS al iniciar.
     environment:
+      # Por defecto deshabilita el modulo de base de datos; true habilita su conexion.
       ENABLE_DB: ${ENABLE_DB:-false}
+      # Nombre DNS del servicio PostgreSQL en esta red; localhost seria el propio backend.
       DB_HOST: db-app
+      # Puerto interno de PostgreSQL. No hace falta publicarlo en el equipo cliente.
       DB_PORT: 5432
+      # Usuario de la aplicacion, tomado de la misma variable usada al inicializar la BD.
       DB_USERNAME: ${POSTGRES_USER}
+      # Contrasena para conectar la aplicacion a PostgreSQL.
       DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # Base de datos a la que se conectara la aplicacion.
       DB_NAME: ${POSTGRES_DB}
+      # Variable de version disponible para la aplicacion; usa 1.0.0 por defecto.
+      # No modifica por si sola la version de package.json ni la etiqueta de la imagen.
       APP_VERSION: ${APP_VERSION:-1.0.0}
+    # Publicaciones de puertos desde el equipo anfitrion hacia el contenedor.
     ports:
+      # puerto_host:puerto_contenedor. NestJS escucha en 3000 y se publica en el 3000
+      # del equipo; al no indicar IP del host, se enlaza a sus interfaces disponibles.
       - "3000:3000"
+    # Conecta la aplicacion a las redes indicadas.
     networks:
+      # Misma red que db-app para comunicarse sin publicar el puerto de PostgreSQL.
       - app-network
+# ==============================================================================
+# Recursos compartidos: almacenamiento y red
+# ==============================================================================
+# Declaracion de volumenes con nombre.
 volumes:
+  # Compose crea este volumen y lo reutiliza; por defecto su nombre incluye el proyecto.
   db_data:
+# Declaracion de redes utilizadas por los servicios.
 networks:
+  # Nombre logico de la red dentro del archivo Compose.
   app-network:
+    # Red bridge para contenedores del mismo host Docker; no es una red de Kubernetes.
     driver: bridge

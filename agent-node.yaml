@@ -1,72 +1,185 @@
+# ==============================================================================
+# Plantilla del agente Jenkins: varias herramientas dentro de un mismo Pod
+# ==============================================================================
+# El plugin Kubernetes de Jenkins usa este archivo mediante yamlFile.
+# No es un Pod completo para aplicar directamente con kubectl: Jenkins agrega
+# nombre, namespace y la configuracion de conexion de su agente (normalmente jnlp).
+# El namespace y el ServiceAccount efectivos dependen de la configuracion de Jenkins.
+#
+# Los contenedores herramientas, node-tool, kubectl-tool y buildkit comparten el
+# Pod. El plugin prepara el workspace de trabajo compartido. Cada container(...)
+# del Jenkinsfile selecciona en cual ejecutar los pasos; defaultContainer elige
+# el usado cuando un paso no indica contenedor.
+#
+# cat con tty mantiene vivos los contenedores de herramientas para que Jenkins
+# ejecute comandos en ellos. Estas imagenes no ejecutan la aplicacion NestJS.
+# Los Secrets regcred-dh y regcred-gh deben existir en el namespace del agente.
+# Se montan solo en buildkit para autenticar la publicacion de imagenes.
+#
+# Inspeccion, sustituyendo <namespace-jenkins> y <pod-agente> por los valores reales:
+# kubectl get pods -n <namespace-jenkins>
+# kubectl describe pod <pod-agente> -n <namespace-jenkins>
+# kubectl top pod <pod-agente> -n <namespace-jenkins> --containers
+#
+# Documentacion: https://plugins.jenkins.io/kubernetes/
+
+# API group core usado para definir un Pod.
 apiVersion: v1
+# Unidad que agrupa los contenedores del agente en un mismo nodo.
 kind: Pod
+# Especificacion del Pod que el plugin completara al crear el agente.
 spec:
+    # Contenedores de herramientas, ademas del contenedor de conexion que use Jenkins.
     containers:
+      # ==============================================================================
+      # Herramientas basicas de shell
+      # ==============================================================================
+      # Nombre usado por defaultContainer o container("herramientas").
       - name: herramientas
+        # Imagen Alpine con utilidades basicas; no incluye Node.js.
         image: alpine:3.23
+        # Sustituye el comando inicial de la imagen.
         command:
+          # Lee de la terminal y mantiene el contenedor disponible para los pasos de Jenkins.
           - cat
+        # Asigna una terminal; junto con cat evita que el contenedor termine enseguida.
         tty: true
+        # Recursos de este contenedor; no son el total de todos los contenedores del Pod.
         resources:
+          # Requests que se consideran al elegir un nodo para el Pod.
           requests:
+            # 100m = 0.1 CPU solicitado.
             cpu: "100m"
+            # 128Mi de memoria solicitados.
             memory: "128Mi"
+          # Maximos de consumo del contenedor durante la ejecucion.
           limits:
+            # 1000m = 1 CPU; el consumo superior se limita mediante throttling.
             cpu: "1000m"
+            # 512Mi; superar este limite puede causar OOMKilled.
             memory: "512Mi"
+      # ==============================================================================
+      # Node.js: dependencias, lint, pruebas y compilacion
+      # ==============================================================================
+      # Contenedor por defecto del Jenkinsfile principal.
       - name: node-tool
+        # Misma version de Node 24 LTS y distribucion Debian usada en el Dockerfile.
         image: node:24.21.0-bookworm-slim
+        # Evita ejecutar el comando Node por defecto al iniciar.
         command:
+          # Mantiene disponible el contenedor mientras dura el pipeline.
           - cat
+        # Terminal para el proceso cat.
         tty: true
+        # Presupuesto de ejecucion de Node y sus procesos hijos.
         resources:
+          # Recursos solicitados al scheduler.
           requests:
+            # 0.1 CPU solicitado, no el maximo permitido.
             cpu: "100m"
+            # 128Mi solicitados para ubicar el Pod.
             memory: "128Mi"
+          # Topes durante instalacion, pruebas y compilacion.
           limits:
+            # Maximo de 1 CPU.
             cpu: "1000m"
+            # Maximo de 512Mi. --runInBand evita crear varios trabajadores Jest en paralelo.
             memory: "512Mi"
+      # ==============================================================================
+      # kubectl: consultas y despliegue en Kubernetes
+      # ==============================================================================
+      # Nombre usado por container("kubectl-tool") en los pipelines.
       - name: kubectl-tool
+        # Imagen que proporciona herramientas de Kubernetes, incluido kubectl.
         image: alpine/k8s:1.36.1
+        # Mantiene el contenedor preparado, sin lanzar un despliegue automaticamente.
         command:
+          # Proceso de espera que Jenkins utilizara para ejecutar sus comandos.
           - cat
+        # Terminal para mantener activo cat.
         tty: true
+        # Recursos de las herramientas de Kubernetes.
         resources:
+          # Requests del contenedor.
           requests:
+            # 0.1 CPU solicitado.
             cpu: "100m"
+            # 128Mi de memoria solicitados.
             memory: "128Mi"
+          # Limits del contenedor.
           limits:
+            # Como maximo 1 CPU.
             cpu: "1000m"
+            # Como maximo 512Mi de memoria.
             memory: "512Mi"
+      # ==============================================================================
+      # BuildKit: construccion y publicacion de imagenes
+      # ==============================================================================
+      # Contenedor donde se ejecuta buildctl-daemonless.sh.
       - name: buildkit
+        # BuildKit rootless no necesita el daemon Docker del host. La etiqueta rootless
+        # no fija una version numerada de BuildKit.
         image: moby/buildkit:rootless
+        # Deja la construccion a los pasos del pipeline, no al inicio del Pod.
         command:
+          # Mantiene disponible el contenedor antes y entre las construcciones.
           - cat
+        # Terminal para el proceso de espera.
         tty: true
+        # Indica en que rutas se montan los volumenes definidos al final del archivo.
         volumeMounts:
+          # Referencia al volumen regcred-dh, no directamente al Secret.
           - name: regcred-dh
+            # Carpeta que Jenkinsfile selecciona como DOCKER_CONFIG para Docker Hub.
             mountPath: /docker-config/dockerhub
+            # Permite leer las credenciales, pero no modificarlas desde este contenedor.
             readOnly: true
+          # Referencia al volumen con las credenciales de GitHub Container Registry.
           - name: regcred-gh
+            # Carpeta que se usa como DOCKER_CONFIG durante la publicacion en GHCR.
             mountPath: /docker-config/github
+            # Tambien se monta en modo de solo lectura.
             readOnly: true
+        # Recursos para el constructor y los procesos que lanza durante el build.
         resources:
+          # Requests de BuildKit; se suman a los de los otros contenedores del Pod.
           requests:
+            # 1 CPU solicitado para construir imagenes.
             cpu: "1000m"
+            # 256Mi de memoria solicitados, no el maximo permitido.
             memory: "256Mi"
+          # Topes de ejecucion del constructor.
           limits:
+            # Maximo de 1 CPU.
             cpu: "1000m"
+            # Maximo de 2Gi. Un build que supera el limite puede terminar por OOMKilled.
             memory: "2Gi"
+    # ==============================================================================
+    # Volumenes: credenciales de registro almacenadas en Secrets
+    # ==============================================================================
+    # Los volumenes pertenecen al Pod; volumeMounts decide que contenedor los recibe.
     volumes:
+      # Nombre del volumen usado por el montaje de Docker Hub.
       - name: regcred-dh
+        # El contenido del volumen procede de un Secret de Kubernetes.
         secret:
+          # Secret existente en el namespace del agente, normalmente de tipo dockerconfigjson.
           secretName: regcred-dh
+          # Claves concretas del Secret que se van a montar como archivos.
           items:
+            # Nombre de la clave que contiene la configuracion de autenticacion Docker.
             - key: .dockerconfigjson
+              # Nombre del archivo dentro del volumen: /docker-config/dockerhub/config.json.
               path: config.json
+      # Nombre del volumen usado por el montaje de GHCR.
       - name: regcred-gh
+        # Segundo volumen basado en un Secret.
         secret:
+          # Secret con las credenciales de GitHub Container Registry.
           secretName: regcred-gh
+          # Selecciona que datos del Secret se exponen como archivos.
           items:
+            # Clave de autenticacion; no imprimir su contenido en los logs del pipeline.
             - key: .dockerconfigjson
+              # Archivo esperado por BuildKit dentro de /docker-config/github.
               path: config.json

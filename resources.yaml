@@ -1,60 +1,155 @@
-apiVersion: v1
-kind: ResourceQuota
-metadata:
-  name: curso-contendores-quota
-  namespace: curso-contenedores
-spec:
-  hard:
-    requests.cpu: "6000m"
-    requests.memory: "16Gi"
-    limits.cpu: "10000m"
-    limits.memory: "32Gi"
+# ==============================================================================
+# Cuotas del namespace y escalado automatico de la aplicacion
+# ==============================================================================
+# Este archivo crea dos objetos, separados por `---`:
+# 1. ResourceQuota: limita recursos declarados y cantidad de objetos del namespace.
+# 2. HorizontalPodAutoscaler (HPA): ajusta las replicas de un Deployment.
+#
+# Son controles distintos: la cuota puede impedir crear nuevos Pods aunque el
+# HPA solicite mas replicas. Ademas, los nodos deben tener capacidad disponible.
+# El HPA no modifica los requests ni los limits de los contenedores.
+#
+# ----------------------------------------------------------------------------
+# Comandos utiles para explorar la API y validar el archivo
+# ----------------------------------------------------------------------------
+# Consultar el significado de los campos:
+# kubectl explain resourcequota.spec.hard
+# kubectl explain hpa.spec.metrics
+# kubectl explain hpa.spec.behavior
+# Validar sin crear recursos (puede consultar la API para obtener el esquema):
+# kubectl create --dry-run=client --validate=strict -f resources.yaml -o name
+# Validar con el servidor, incluyendo permisos y reglas de admision:
+# kubectl apply --dry-run=server -f resources.yaml
+# Crear o actualizar los recursos:
+# kubectl apply -f resources.yaml
+#
+# ----------------------------------------------------------------------------
+# Comandos para observar cuotas, metricas y escalado
+# ----------------------------------------------------------------------------
+# Ver los recursos y sus valores actuales:
+# kubectl get resourcequota,hpa -n curso-contenedores
+# Comparar lo utilizado (Used) con lo permitido (Hard):
+# kubectl describe resourcequota curso-contendores-quota -n curso-contenedores
+# Ver metricas, recomendaciones y posibles errores del HPA:
+# kubectl describe hpa curso-contenedores-hpa -n curso-contenedores
+# Consultar el consumo actual de cada contenedor (requiere API de metricas):
+# kubectl top pods -n curso-contenedores --containers
+# Seguir los cambios de replicas del Deployment:
+# kubectl get deployment curso-contenedores -n curso-contenedores -w
+# Ver eventos, por ejemplo Pods rechazados por superar la cuota:
+# kubectl get events -n curso-contenedores --sort-by=.metadata.creationTimestamp
+#
+# Documentacion de referencia:
+# https://kubernetes.io/docs/concepts/policy/resource-quotas/
+# https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
 
-    count/pods: "30"
-    count/services: "3"
-    count/configmaps: "10" 
-    count/secrets: "2" 
-    count/ingresses.networking.k8s.io: "3"
----
+# ==============================================================================
+# 1. ResourceQuota: presupuesto compartido por todo el namespace
+# ==============================================================================
+apiVersion: v1 # API principal de Kubernetes, tambien llamada core.
+kind: ResourceQuota # Controla cuotas al crear o modificar recursos.
+metadata: # Identifica el objeto; no contiene los valores de la cuota.
+  name: curso-contendores-quota # Nombre usado en get, describe y delete.
+  namespace: curso-contenedores # La cuota solo se aplica a este namespace.
+spec: # Configuracion deseada de la cuota.
+  hard: # Maximos admitidos; no son valores por Pod ni por Deployment.
+    # Se suman los requests y limits declarados para los Pods del namespace.
+    # Esto NO mide el consumo real ni reserva capacidad fisica en los nodos.
+    # Los requests ayudan al scheduler a decidir en que nodo ubicar cada Pod.
+    # Los limits acotan el consumo del contenedor durante su ejecucion.
+    # Esta cuota exige requests y limits de CPU y memoria. Si faltan y no hay
+    # valores por defecto definidos, por ejemplo en un LimitRange, el Pod puede
+    # ser rechazado aunque todavia quede presupuesto en el namespace.
 
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
+    # CPU: 1000m = 1 CPU; m significa milicpu, no megabytes.
+    requests.cpu: "6000m" # La suma de requests no puede superar 6 CPU.
+    # Memoria: 1Gi = 1024Mi; Gi y Mi son unidades binarias.
+    requests.memory: "16Gi" # La suma de requests no puede superar 16384Mi.
+    limits.cpu: "10000m" # La suma de limits no puede superar 10 CPU.
+    limits.memory: "32Gi" # La suma de limits no puede superar 32768Mi.
+
+    # Cuotas de cantidad: cuentan objetos del namespace, no su consumo.
+    # Incluyen los objetos creados por todos los Deployments y otras aplicaciones.
+    count/pods: "30" # Maximo de 30 objetos Pod; considerar HPA y actualizaciones.
+    count/services: "3" # Maximo de 3 Services, independientemente de su tipo.
+    count/configmaps: "10" # Maximo de 10 ConfigMaps, no de claves almacenadas.
+    count/secrets: "2" # Maximo de 2 Secrets; tambien cuentan los de registro y tokens.
+    # Para recursos fuera del API group core: count/<recurso plural>.<api group>.
+    # Un Ingress pertenece a networking.k8s.io; no se escribe solo count/ingresses.
+    count/ingresses.networking.k8s.io: "3" # Maximo de 3 objetos Ingress.
+
+--- # Comienza otro objeto independiente dentro del mismo archivo YAML.
+
+# ==============================================================================
+# 2. HPA: adapta la cantidad de replicas al consumo de CPU y memoria
+# ==============================================================================
+# Requiere metricas de recursos, normalmente proporcionadas por Metrics Server.
+# Para calcular Utilization, los contenedores de los Pods deben tener requests
+# del recurso correspondiente. Un request ausente puede impedir ese calculo.
+# El porcentaje se calcula respecto de los requests, NO de los limits ni de la
+# capacidad total del nodo. Tampoco representa el porcentaje usado de la cuota.
+#
+# Con varias metricas, el HPA calcula una recomendacion por cada una y escoge la
+# mayor cantidad de replicas. No promedia el porcentaje de CPU con el de memoria.
+# Si una metrica pide crecer, puede crecer aunque la otra este bajo su objetivo.
+# Si no puede leer alguna metrica, puede omitir una reduccion de replicas.
+apiVersion: autoscaling/v2 # Version que permite varias metricas y behavior.
+kind: HorizontalPodAutoscaler # Escala replicas; no aumenta recursos del contenedor.
 metadata:
-  name: curso-contenedores-hpa
-  namespace: curso-contenedores
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: curso-contenedores
-  minReplicas: 1
-  maxReplicas: 10
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
+  name: curso-contenedores-hpa # Nombre de este HPA, no del Deployment.
+  namespace: curso-contenedores # Debe coincidir con el namespace del Deployment.
+spec: # Define el destino, rango de replicas, objetivos y reglas de escalado.
+  scaleTargetRef: # Referencia al recurso cuya cantidad de replicas se modificara.
+    apiVersion: apps/v1 # API group y version del recurso de destino.
+    kind: Deployment # Tipo de recurso que se va a escalar.
+    name: curso-contenedores # Debe coincidir con metadata.name del Deployment.
+  minReplicas: 1 # Mantiene al menos una replica; este ejemplo no escala a cero.
+  maxReplicas: 10 # El HPA no solicitara mas de 10 replicas para este Deployment.
+  metrics: # Lista de metricas y objetivos para calcular las replicas necesarias.
+    - type: Resource # Metrica de un recurso de los contenedores del Pod.
+      resource: # Describe que recurso medir y que objetivo buscar.
+        name: cpu # Mide el consumo de CPU.
+        target: # Objetivo que el HPA intenta mantener mediante las replicas.
+          type: Utilization # Expresa consumo como porcentaje del request.
+          # Busca una utilizacion media del 70% del CPU solicitado.
+          # Ejemplo: si cada Pod solicita 200m, el 70% equivale a 140m por Pod.
+          # Superar 70% no impone un limite de CPU: puede provocar mas replicas.
           averageUtilization: 70
-    - type: Resource
+    - type: Resource # Segunda metrica, evaluada por separado de la CPU.
       resource:
-        name: memory
-        target: 
-          type: Utilization
+        name: memory # Mide el consumo de memoria.
+        target:
+          type: Utilization # Tambien es un porcentaje del request de memoria.
+          # Busca una utilizacion media del 80% de la memoria solicitada.
+          # Ejemplo: con un request de 256Mi, el objetivo equivale a 204.8Mi.
+          # Esto no evita un OOMKilled si un contenedor supera su limite de memoria.
           averageUtilization: 80
-  behavior:
-    scaleUp:
+  behavior: # Regula como aplicar las recomendaciones, no como medir el consumo.
+    scaleUp: # Reglas para aumentar la cantidad de replicas.
+      # No suaviza las recomendaciones con una ventana de estabilizacion previa.
+      # Permite responder rapido, sujeto a metricas, politicas y maxReplicas.
       stabilizationWindowSeconds: 0
-      policies:
-        - type: Percent
+      policies: # Limites de velocidad para agregar replicas.
+        - type: Percent # El cambio permitido se expresa como porcentaje de replicas.
+          # Permite aumentar hasta un 100%: por ejemplo, pasar de 3 a 6 replicas.
+          # Es un maximo permitido; no ordena duplicar las replicas en cada ciclo.
           value: 100
+          # Ventana de 15 segundos para contabilizar replicas agregadas y limitar
+          # el siguiente aumento. NO es el intervalo de consulta de metricas ni
+          # el periodo de ejecucion del controlador HPA.
           periodSeconds: 15
-    scaleDown:
+    scaleDown: # Reglas para reducir replicas cuando baja la demanda.
+      # Conserva la mayor recomendacion de los ultimos 30 segundos al evaluar
+      # una reduccion. Evita bajar enseguida por una caida breve del consumo.
+      # No es una espera fija de 30 segundos entre todas las acciones de escalado.
       stabilizationWindowSeconds: 30
-      policies:
-        - type: Percent
+      policies: # Limites de velocidad para quitar replicas.
+        - type: Percent # Reduce en proporcion a la cantidad actual de replicas.
+          # Permite quitar hasta el 50%: por ejemplo, pasar de 10 a 5 replicas.
+          # No obliga a reducir a la mitad; tambien se respeta minReplicas.
           value: 50
+          # Ventana de 15 segundos para contabilizar las replicas eliminadas.
+          # Se aplica junto con la estabilizacion; cumple una funcion distinta.
           periodSeconds: 15
-
 
 

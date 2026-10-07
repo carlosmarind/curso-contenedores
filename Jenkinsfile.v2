@@ -1,30 +1,66 @@
+// ==============================================================================
+// Version 2: plantilla de Pod externa y seleccion de herramientas
+// ==============================================================================
+// Reutiliza agent-node.yaml en lugar de incrustar el YAML como en v1.
+// Comprueba el entorno de shell, Node/npm y kubectl. No construye ni despliega.
+// Aunque la plantilla tambien incluye BuildKit, esta version no lo utiliza.
+//
+// Requiere el plugin Kubernetes de Jenkins.
+// Documentacion: https://plugins.jenkins.io/kubernetes/
+
+// Bloque raiz del pipeline declarativo.
 pipeline {
+    // Alternativa comentada: cualquier agente Jenkins disponible.
     //agent any
+    // Agente general compartido por las tres etapas.
     agent {
+        // El plugin crea un Pod temporal usando la plantilla indicada.
         kubernetes {
+            // Los sh sin container(...) se ejecutan en herramientas (Alpine).
             defaultContainer 'herramientas'
+            // Carga el YAML del Pod desde un archivo versionado del repositorio.
             yamlFile 'agent-node.yaml'
         }
     }
+    // Etapas secuenciales; cada una muestra una herramienta o parte del entorno.
     stages{
+        // ==============================================================================
+        // Shell y kernel del contenedor de herramientas
+        // ==============================================================================
         stage("Primer paso del pipeline"){
+            // Estos pasos usan defaultContainer: herramientas.
             steps{
+                // Imprime un mensaje en el log del job.
                 sh 'echo "saludos desde el terminal"'
+                // Muestra informacion del sistema y del kernel que comparte con el nodo.
                 sh 'uname -a'
+                // Lee la version del kernel Linux; no muestra la version de Node o de Kubernetes.
                 sh 'cat /proc/version'
             }
         }
+        // ==============================================================================
+        // Herramientas de Node.js
+        // ==============================================================================
         stage("Segundo paso del pipeline"){
             steps{
+                // Selecciona node-tool en el mismo Pod y workspace, en lugar de herramientas.
                 container("node-tool"){
+                    // Comprueba la version de Node incluida en la imagen del agente.
                     sh 'node --version'
+                    // Comprueba la version de npm; no instala dependencias con npm.
                     sh 'npm --version'
                 }
             }
         }
+        // ==============================================================================
+        // Cliente Kubernetes
+        // ==============================================================================
         stage("Tercer paso del pipeline"){
             steps{
+                // Selecciona el contenedor que incluye kubectl.
                 container('kubectl-tool'){
+                    // --client muestra solo la version local del cliente. No consulta al servidor
+                    // ni demuestra que la identidad tenga permisos para desplegar en el cluster.
                     sh 'kubectl version --client'
                 }
             }

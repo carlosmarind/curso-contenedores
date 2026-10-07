@@ -1,145 +1,352 @@
+# ==============================================================================
+# Aplicacion NestJS en Kubernetes: del namespace al acceso HTTP
+# ==============================================================================
+# Este archivo contiene seis objetos separados por `---`:
+# 1. Namespace: agrupa los recursos de la clase.
+# 2. ConfigMap: proporciona configuracion no sensible a la aplicacion.
+# 3. Secret: proporciona la contrasena de la base de datos.
+# 4. Deployment: mantiene y actualiza los Pods de la aplicacion.
+# 5. Service: ofrece una direccion estable para acceder a esos Pods.
+# 6. Ingress: publica el Service mediante el host app.local.
+#
+# Recorrido de una peticion:
+# cliente -> controlador Ingress -> Service:80 -> Pod listo:3000.
+# El Ingress necesita un controlador instalado y que app.local apunte a su IP.
+# La base de datos se declara en bbdd.yaml; este archivo no crea PostgreSQL.
+#
+# ----------------------------------------------------------------------------
+# Comandos utiles para validar, aplicar y observar
+# ----------------------------------------------------------------------------
+# Validacion sin crear recursos; puede consultar la API para obtener el esquema:
+# kubectl apply --dry-run=client -n curso-contenedores -f kubernetes.yaml
+# Crear o actualizar los objetos:
+# kubectl apply -n curso-contenedores -f kubernetes.yaml
+# IMPORTANTE: ConfigMap y Secret no incluyen metadata.namespace. El parametro
+# -n los crea en curso-contenedores; sin el, usan el namespace del contexto activo.
+# Los recursos referenciados por un Pod deben estar en su mismo namespace.
+#
+# Consultar los componentes y esperar el despliegue:
+# kubectl get deployment,pods,service,ingress -n curso-contenedores
+# kubectl rollout status deployment/curso-contenedores -n curso-contenedores
+# kubectl describe deployment curso-contenedores -n curso-contenedores
+# Ver los logs de un Pod del Deployment:
+# kubectl logs deployment/curso-contenedores -n curso-contenedores
+# Acceso local al Service sin usar Ingress:
+# kubectl port-forward service/curso-contenedores 3000:80 -n curso-contenedores
+# En otra terminal: curl http://localhost:3000/health/ready
+#
+# Documentacion: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+
+# ==============================================================================
+# 1. Namespace: limite logico para los recursos de la aplicacion
+# ==============================================================================
+# API principal de Kubernetes (core).
 apiVersion: v1
+# Un Namespace agrupa objetos; no reserva nodos ni aisla por si solo la red.
 kind: Namespace
+# Identificacion y etiquetas del objeto.
 metadata:
+  # Nombre que se usa en metadata.namespace y en kubectl -n.
   name: curso-contenedores
+  # Etiquetas para organizar y buscar este objeto.
   labels:
+    # Esta etiqueta identifica al Namespace; no selecciona automaticamente sus Pods.
     app: curso-contenedores
 ---
+# ==============================================================================
+# 2. ConfigMap: configuracion no sensible
+# ==============================================================================
+# ConfigMap pertenece al API group core.
 apiVersion: v1
+# Guarda pares clave/valor que pueden usarse como variables de entorno.
 kind: ConfigMap
+# Al no indicar namespace, se usa el namespace elegido al aplicar el archivo.
 metadata:
+  # Nombre que luego utiliza configMapKeyRef.
   name: curso-contenedores-config
+# Valores de configuracion. Las variables de entorno siempre llegan como texto.
 data:
+  # Identifica el ambiente que la aplicacion mostrara o utilizara.
   AMBIENTE: develop
+  # Nombre DNS del Service de PostgreSQL declarado en bbdd.yaml.
   DB_HOST: curso-contenedores-postgres
+  # Usuario con el que la aplicacion se conectara a PostgreSQL.
   DB_USERNAME: pguser-app
+  # Nombre de la base de datos que utilizara la aplicacion.
   DB_NAME: cursodb
+  # Activa el modulo de base de datos; las comillas mantienen el valor como texto.
   ENABLE_DB: "true"
 
 ---
+# ==============================================================================
+# 3. Secret: configuracion sensible
+# ==============================================================================
+# Secret tambien pertenece al API group core.
 apiVersion: v1
+# Almacena datos sensibles; su acceso depende de RBAC y la configuracion del cluster.
 kind: Secret
+# Como el ConfigMap, toma el namespace indicado al aplicar el archivo.
 metadata:
+  # Nombre referenciado por secretKeyRef en el contenedor.
   name: curso-contenedores-secret
+# Opaque permite claves arbitrarias, a diferencia de tipos especiales como tokens.
 type: Opaque
+# Permite escribir texto; Kubernetes lo convierte al campo data codificado en base64.
+# Base64 no es cifrado. Esta contrasena es solo un ejemplo para el laboratorio;
+# no guardar credenciales reales en un manifiesto versionado.
 stringData:
+  # Clave que se inyectara como variable DB_PASSWORD en el contenedor.
   DB_PASSWORD: pgpassword-app
 ---
+# ==============================================================================
+# 4. Deployment: replicas, actualizaciones y plantilla de los Pods
+# ==============================================================================
+# API group apps, version estable v1.
 apiVersion: apps/v1
+# Controla ReplicaSets, que a su vez mantienen la cantidad deseada de Pods.
 kind: Deployment
+# Identifica al Deployment; las etiquetas de los Pods se definen mas abajo.
 metadata:
+  # Nombre usado por el HPA y por kubectl set image / rollout status.
   name: curso-contenedores
+  # Namespace que debe contener ConfigMap, Secret y credencial de registro.
   namespace: curso-contenedores
+  # Etiquetas del propio Deployment.
   labels:
+    # Permite buscar Deployments con kubectl get deployment -l app=curso-contenedores.
     app: curso-contenedores
+# Estado deseado del Deployment.
 spec:
+  # Cantidad inicial de replicas. Si se aplica el HPA de resources.yaml, este
+  # puede ajustar el valor entre minReplicas y maxReplicas. Volver a aplicar este
+  # archivo tambien puede volver a establecer temporalmente las 5 replicas.
   replicas: 5
+  # Selector que identifica los Pods administrados por este Deployment.
   selector:
+    # Los Pods deben tener todas estas etiquetas; deben coincidir con template.metadata.labels.
     matchLabels:
+      # Etiqueta que relaciona Deployment, Pods y selector del Service.
       app: curso-contenedores
+  # Plantilla usada para crear cada Pod; cambiarla inicia una actualizacion.
   template:
+    # Metadatos que se copiaran a los Pods nuevos.
     metadata:
+      # Etiquetas de cada Pod, diferentes de las etiquetas del Deployment como objeto.
       labels:
+        # Debe coincidir con el selector anterior y con el del Service.
         app: curso-contenedores
+    # Configuracion de ejecucion de cada Pod.
     spec:
+      # Credenciales para descargar imagenes de un registro privado.
       imagePullSecrets:
+        # Secret de acceso a GHCR; debe existir previamente en curso-contenedores.
         - name: regcred-gh
+      # Lista de contenedores del Pod; aqui hay un contenedor de aplicacion.
       containers:
+        # Nombre del contenedor. Jenkins usa este nombre a la izquierda del = en set image.
         - name: curso-contenedores
+          # Registro, repositorio y etiqueta. latest es mutable; Jenkins despliega despues
+          # una etiqueta numerada con BUILD_NUMBER para identificar la imagen construida.
           image: ghcr.io/carlosmarind/curso-contenedores:latest
+          # Consulta el registro al iniciar; puede reutilizar capas locales del mismo digest.
+          # Cambiar la imagen asociada a latest no reinicia por si solo los Pods existentes.
           imagePullPolicy: Always
+          # Variables de entorno que se entregan al proceso Node al iniciar el contenedor.
           env:
+            # Nombre de la variable que vera la aplicacion: process.env.AMBIENTE.
             - name: AMBIENTE
+              # Obtiene el valor de otro objeto en lugar de escribirlo directamente aqui.
               valueFrom:
+                # Referencia una clave de un ConfigMap del mismo namespace.
                 configMapKeyRef:
+                  # Nombre del ConfigMap que contiene el valor.
                   name: curso-contenedores-config
+                  # Clave del ConfigMap que se copia a la variable de entorno.
                   key: AMBIENTE
+            # Host de PostgreSQL, resuelto mediante el DNS interno de Kubernetes.
             - name: DB_HOST
+              # Tambien lee el valor al iniciar desde un objeto de configuracion.
               valueFrom:
+                # DB_HOST se obtiene del ConfigMap, no de un Secret.
                 configMapKeyRef:
+                  # ConfigMap de la aplicacion.
                   name: curso-contenedores-config
+                  # Clave que contiene el nombre del Service de PostgreSQL.
                   key: DB_HOST
+            # Usuario de la conexion a PostgreSQL.
             - name: DB_USERNAME
+              # El valor se obtiene de una referencia.
               valueFrom:
+                # Referencia al ConfigMap que contiene el usuario.
                 configMapKeyRef:
+                  # Nombre del objeto de configuracion.
                   name: curso-contenedores-config
+                  # Clave que contiene el usuario de base de datos.
                   key: DB_USERNAME
+                  # Si falta el objeto o esta clave, no se bloquea el arranque por esta referencia.
+                  # La variable puede quedar ausente; la aplicacion decide su valor por defecto.
                   optional: true
+            # Nombre de la base de datos a la que se conectara la aplicacion.
             - name: DB_NAME
+              # Lee el valor desde la configuracion externa.
               valueFrom:
+                # Referencia a una clave del ConfigMap.
                 configMapKeyRef:
+                  # Objeto que contiene la configuracion de conexion.
                   name: curso-contenedores-config
+                  # Clave que contiene el nombre de la base de datos.
                   key: DB_NAME
+            # Bandera que habilita o deshabilita el modulo de base de datos.
             - name: ENABLE_DB
+              # Obtiene el valor desde el ConfigMap al iniciar.
               valueFrom:
+                # Referencia de configuracion no sensible.
                 configMapKeyRef:
+                  # Nombre del ConfigMap.
                   name: curso-contenedores-config
+                  # Clave con el texto true; la aplicacion interpreta ese texto.
                   key: ENABLE_DB
+            # Contrasena usada para la conexion a PostgreSQL.
             - name: DB_PASSWORD
+              # Se obtiene por referencia; no se escribe directamente en la plantilla del Pod.
               valueFrom:
+                # Lee una clave de un Secret del mismo namespace.
                 secretKeyRef:
+                  # Nombre del Secret de la aplicacion, distinto del Secret de acceso a GHCR.
                   name: curso-contenedores-secret
+                  # Clave del Secret que contiene la contrasena.
                   key: DB_PASSWORD
+          # Documenta los puertos del contenedor; no publica puertos del host por si sola.
           ports:
+            # Puerto en el que escucha NestJS; debe coincidir con probes y targetPort del Service.
             - containerPort: 3000
+          # Recursos por contenedor. Se multiplican por la cantidad de Pods al evaluar la cuota.
           resources:
+            # Requests que el scheduler usa para comprobar si un nodo puede alojar el Pod.
+            # El HPA usa estos valores como referencia para sus porcentajes de utilizacion.
             requests:
+              # 100m = 0.1 CPU solicitado. El objetivo de CPU del HPA, 70%, equivale a 70m.
               cpu: "100m"
+              # 128Mi solicitados. El objetivo de memoria del HPA, 80%, equivale a 102.4Mi.
               memory: "128Mi"
+            # Maximos de consumo durante la ejecucion, distintos de los requests.
             limits:
+              # 250m = 0.25 CPU; si intenta consumir mas, se limita su tiempo de CPU.
               cpu: "250m"
+              # 256Mi; superar el limite puede provocar OOMKilled y un reinicio.
               memory: "256Mi"
+          # Readiness: comprueba si puede recibir trafico. Un fallo retira el Pod de los
+          # destinos listos del Service, pero no reinicia el contenedor por si solo.
           readinessProbe:
+            # Hace una peticion HTTP al contenedor.
             httpGet:
+              # Endpoint de la aplicacion que indica si esta lista para atender.
               path: /health/ready
+              # Puerto del contenedor al que se envia la comprobacion.
               port: 3000
+            # Espera 10 segundos despues de iniciar el contenedor antes de la primera prueba.
             initialDelaySeconds: 10
+            # Intervalo configurado entre comprobaciones de readiness.
             periodSeconds: 10
+            # Tiempo maximo de espera de la respuesta: 3 segundos.
             timeoutSeconds: 3
+            # Tras 3 fallos consecutivos se considera que el contenedor no esta listo.
             failureThreshold: 3
+          # Liveness: comprueba si sigue funcionando. Tras suficientes fallos, Kubernetes
+          # reinicia el contenedor; no implica borrar y recrear todo el Deployment.
           livenessProbe:
+            # Comprueba la salud mediante una peticion HTTP.
             httpGet:
+              # Endpoint que indica si el proceso sigue vivo.
               path: /health/live
+              # Puerto donde se consulta la salud.
               port: 3000
+            # Espera 20 segundos antes de iniciar las comprobaciones de liveness.
             initialDelaySeconds: 20
+            # Intervalo configurado de 20 segundos entre comprobaciones.
             periodSeconds: 20
+            # Espera como maximo 5 segundos por respuesta.
             timeoutSeconds: 5
+            # Reinicia el contenedor tras 6 fallos consecutivos; no es un temporizador exacto
+            # de 6 x 20 segundos, porque tambien influyen el inicio y las respuestas.
             failureThreshold: 6
 ---
+# ==============================================================================
+# 5. Service: direccion estable delante de los Pods
+# ==============================================================================
+# API group core, version v1.
 apiVersion: v1
+# Proporciona acceso estable aunque cambien las IP o la cantidad de Pods.
 kind: Service
+# Identificacion del Service.
 metadata:
+  # Nombre DNS del Service, usado tambien por el backend del Ingress.
   name: curso-contenedores
+  # El Service selecciona Pods dentro de este namespace.
   namespace: curso-contenedores
+  # Etiquetas del Service como objeto.
   labels:
+    # No selecciona Pods por si sola; la seleccion se define en spec.selector.
     app: curso-contenedores
+# Configuracion de red del Service.
 spec:
+  # Selecciona los Pods a los que se dirigira el trafico.
   selector:
+    # Debe coincidir con template.metadata.labels.app del Deployment.
     app: curso-contenedores
+  # Accesible mediante IP interna del cluster; no abre un puerto en el host.
   type: ClusterIP
+  # Puertos que el Service ofrece y su destino en los Pods.
   ports:
+    # Nombre del puerto; permite identificarlo desde otros recursos.
     - name: http
+      # Puerto del Service: los clientes internos y el Ingress se conectan al 80.
       port: 80
+      # Puerto de destino en los Pods seleccionados: NestJS escucha en el 3000.
       targetPort: 3000 
 ---
+# ==============================================================================
+# 6. Ingress: entrada HTTP mediante app.local
+# ==============================================================================
+# API group networking.k8s.io, version v1.
 apiVersion: networking.k8s.io/v1
+# Describe rutas HTTP; requiere un controlador Ingress para implementarlas.
 kind: Ingress
+# Identificacion del Ingress.
 metadata:
+  # Nombre para consultar sus reglas y eventos.
   name: curso-contenedores
+  # Debe compartir namespace con el Service que referencia.
   namespace: curso-contenedores
+  # Etiquetas del objeto Ingress.
   labels:
+    # Etiqueta para agrupar los componentes de la aplicacion.
     app: curso-contenedores
+# Configuracion de las reglas de entrada.
 spec:
+  # Selecciona la IngressClass nginx; esa clase y su controlador deben existir.
   ingressClassName: nginx
+  # Lista de reglas que combinan host y rutas.
   rules:
+    # Se aplica a peticiones HTTP cuyo Host sea app.local. El DNS o archivo hosts
+    # del equipo cliente debe resolver ese nombre a la IP del controlador.
     - host: app.local
+      # Reglas para trafico HTTP; este ejemplo no configura TLS.
       http:
+        # Rutas que se envian al Service.
         paths:
+        # Prefix compara por segmentos de ruta; / abarca todas las rutas de este host.
         - pathType: Prefix
+          # Ruta de entrada. No se configura aqui ninguna reescritura de la URL.
           path: /
+          # Destino al que el controlador enviara las peticiones que coincidan.
           backend:
+            # El destino es un Service, no directamente un Pod o Deployment.
             service:
+              # Debe coincidir con metadata.name del Service anterior.
               name: curso-contenedores
+              # Selecciona un puerto expuesto por el Service.
               port:
+                # Puerto del Service (80), no containerPort/targetPort (3000).
                 number: 80
 ---

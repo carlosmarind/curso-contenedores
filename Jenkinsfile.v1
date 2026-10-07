@@ -1,64 +1,128 @@
+// ==============================================================================
+// Version 1: primeras etapas y comparacion de tipos de agente
+// ==============================================================================
+// Ejemplo progresivo: un Pod definido dentro del pipeline, un agente con label,
+// un contenedor Docker en ese agente y un contenedor concreto del Pod Kubernetes.
+// No instala dependencias, no compila NestJS y no publica ni despliega imagenes.
+//
+// Requiere el plugin Kubernetes. La quinta etapa tambien requiere Docker Pipeline
+// y un agente conectado con etiqueta wsl2 que pueda ejecutar Docker.
+// Sin defaultContainer, el plugin usa el contenedor del agente Jenkins
+// (normalmente jnlp) para los sh que no seleccionan otro contenedor.
+//
+// Documentacion: https://www.jenkins.io/doc/book/pipeline/syntax/#agent
+
+// Pipeline declarativo: describe agentes y etapas.
 pipeline {
     
+    // Alternativa comentada para ejecutar el pipeline en cualquier agente disponible.
     //agent any
+    // Agente general utilizado por las etapas que no declaran uno propio.
     agent {
+        // Solicita al plugin un agente temporal en Kubernetes.
         kubernetes {
+            // La plantilla YAML esta embebida en un string Groovy, en lugar de yamlFile.
+            // Dentro del string se usan comentarios YAML (#), no comentarios Groovy (//).
             yaml '''
+# API group core del Pod que Jenkins utilizara como plantilla.
 apiVersion: v1
+# Agrupa los contenedores; Jenkins completa nombre, namespace y conexion del agente.
 kind: Pod
+# Configuracion del Pod.
 spec:
+    # Contenedores de herramientas, ademas del agente que use el plugin.
     containers:
+      # Nombre que permitiria seleccionar container("herramientas").
       - name: herramientas
+        # Alpine aporta herramientas basicas de shell.
         image: alpine:3.23
+        # Sustituye el comando por defecto de la imagen.
         command:
+          # cat espera entrada y mantiene disponible el contenedor.
           - cat
+        # Terminal para el proceso de espera; aqui no se declaran requests ni limits.
         tty: true
+      # Nombre seleccionado explicitamente en la sexta etapa.
       - name: node-tool
+        # Imagen con Node.js 24 LTS; no es la imagen de la aplicacion NestJS.
         image: node:24.21.0-bookworm-slim
+        # Sustituye el comando inicial de la imagen Node.
         command:
+          # Mantiene el contenedor preparado para recibir comandos de Jenkins.
           - cat
+        # Asigna una terminal al proceso cat.
         tty: true
             '''
         }
     }
+    // Etapas que se ejecutan en orden; las primeras tres usan el agente general.
     stages{
+        // Primera etapa: muestra como ejecutar un comando shell sencillo.
         stage("Primer paso del pipeline"){
+            // Lista de pasos de la etapa.
             steps{
+                // sh ejecuta el comando; echo muestra texto en el log de Jenkins.
                 sh 'echo "saludos desde el terminal"'
             }
         }
+         // Segunda etapa: otro comando, separado visualmente de la etapa anterior.
          stage("Segundo paso del pipeline"){
             steps{
+                // Se ejecuta en el agente general, sin seleccionar herramientas o node-tool.
                 sh 'echo "segundos saludos desde el terminal"'
             }
         }
+        // Tercera etapa: completa el ejemplo de pasos secuenciales.
         stage("Tercer paso del pipeline"){
             steps{
+                 // Si un comando sh falla, normalmente no continuan las etapas siguientes.
                  sh 'echo "Tercer saludo desde el terminal"'
             }
         }
+        // ==============================================================================
+        // Agente asignado por etiqueta
+        // ==============================================================================
         stage("Cuarto paso del pipeline"){
+            // Este agente reemplaza al general solamente durante esta etapa.
             agent {
+                // Selecciona un nodo/agente Jenkins con label wsl2; la etiqueta no instala WSL
+                // ni crea automaticamente el agente. Debe estar configurado y disponible.
                 label 'wsl2'
             }
             steps{
+                 // Lista contenedores del daemon Docker accesible desde ese agente.
+                 // No lista los Pods del cluster Kubernetes.
                  sh 'docker ps'
             }
         }
+        // ==============================================================================
+        // Agente Docker para una etapa
+        // ==============================================================================
         stage("Quinto paso del pipeline"){
+            // Agente especifico de esta etapa.
             agent {
+                // Docker Pipeline inicia un contenedor para ejecutar los pasos.
                 docker {
+                    // El contenedor se ejecutara en un agente Jenkins con Docker y label wsl2.
                     label 'wsl2'
+                    // Imagen que proporciona Node; Jenkins prepara el workspace para esa etapa.
                     image 'node:24.21.0-bookworm-slim'
                 }
             }
             steps{
+                 // Muestra la version de Node del contenedor Docker de esta etapa.
                  sh 'node -v'
             }
         }
+        // ==============================================================================
+        // Contenedor concreto del agente Kubernetes general
+        // ==============================================================================
         stage("Sexto paso del pipeline"){
             steps{
+                // Vuelve al Pod del agente general y selecciona su contenedor node-tool.
+                // container(...) elige un contenedor existente; no construye una imagen nueva.
                 container("node-tool"){
+                    // Muestra la version de Node incluida en ese contenedor del Pod.
                     sh 'node -v'
                 }
             }
