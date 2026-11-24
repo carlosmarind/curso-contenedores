@@ -1,0 +1,17 @@
+# Ejemplo sin multistage: conserva el codigo fuente y las dependencias de desarrollo.
+FROM node:24
+
+WORKDIR /usr/app
+
+RUN corepack enable
+
+# Copiar antes de instalar tambien invalida esa cache cuando cambia el codigo.
+COPY . .
+
+RUN pnpm install --frozen-lockfile
+
+RUN pnpm build
+
+USER node
+
+CMD ["node", "dist/main.js"]
