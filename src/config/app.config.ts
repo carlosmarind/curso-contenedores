@@ -11,7 +11,7 @@ export function isDbEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 export default registerAs('app', () => ({
-  port: toNumber(process.env.PORT, 3000),
+  port: toNumber(process.env.PORT, 3001),
   enableDb: isDbEnabled(),
   db: {
     host: process.env.DB_HOST || 'localhost',

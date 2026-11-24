@@ -1,6 +1,6 @@
 # Curso de Contenedores - API NestJS
 
-Base de la aplicacion para el modulo de Docker. Este README contiene las dos
+Base de la aplicacion para el modulo de Docker en el curso de contenedores. Este README contiene las dos
 primeras clases: construccion de imagenes, configuracion, Compose y secretos.
 Los archivos resueltos de Docker estan en la rama `develop` y se incorporan al
 repositorio de los alumnos durante las clases. Ejecuta los comandos de cada
