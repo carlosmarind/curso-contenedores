@@ -1,0 +1,12 @@
+name: curso-contenedores
+services:
+  backend:
+    image: curso-contenedores
+    restart: always
+    ports:
+      - "13001:3001"
+    networks:
+      - app-network
+networks:
+  app-network:
+    driver: bridge
