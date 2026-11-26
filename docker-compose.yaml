@@ -1,5 +1,30 @@
 name: curso-contenedores
 services:
+  db-app:
+    image: postgres:18
+    restart: always
+    volumes:
+      - db_data:/var/lib/postgresql
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "6"
+          memory: "512M"
+        reservations:
+          cpus: "2"
+          memory: "256M"
+    networks:
+      - app-network
   backend:
     image: curso-contenedores
     restart: always
@@ -7,6 +32,26 @@ services:
       - "13001:3001"
     networks:
       - app-network
+    environment:
+      ENABLE_DB: ${ENABLE_DB:-false}
+      DB_HOST: db-app
+      DB_PORT: ${DB_PORT}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+    depends_on:
+      db-app:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: "256M"
+        reservations:
+          cpus: "1"
+          memory: "128M"
 networks:
   app-network:
     driver: bridge
+volumes:
+  db_data:
